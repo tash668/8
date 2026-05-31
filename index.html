@@ -1,1 +1,256 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cloud Notes - Apple Style</title>
+    <!-- Firebase SDKの読み込み -->
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.1.3/firebase-firestore-compat.js"></script>
+    
+    <style>
+        :root {
+            --apple-bg: #f5f5f7;
+            --apple-yellow: #ffb300;
+            --apple-border: #d2d2d7;
+            --apple-blue: #007aff;
+        }
 
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--apple-bg);
+            display: flex;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+            color: #1d1d1f;
+        }
+
+        .container { width: 100%; max-width: 600px; }
+
+        .category-nav {
+            display: flex;
+            justify-content: space-around;
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 10px;
+            margin-bottom: 20px;
+            position: sticky;
+            top: 10px;
+            z-index: 100;
+            border: 1px solid var(--apple-border);
+        }
+
+        .category-item {
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            color: #86868b;
+            transition: 0.3s;
+        }
+
+        .category-item.active {
+            background-color: white;
+            color: var(--apple-blue);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            border-radius: 18px;
+            padding: 24px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.05);
+            margin-bottom: 30px;
+            border: 1px solid rgba(255,255,255,0.3);
+        }
+
+        textarea {
+            width: 100%; height: 100px; border: none; background: transparent;
+            font-size: 16px; resize: none; outline: none; padding: 10px 0;
+            border-bottom: 1px solid var(--apple-border);
+        }
+
+        .btn-row { display: flex; justify-content: flex-end; margin-top: 15px; }
+
+        button {
+            background-color: var(--apple-yellow); color: white; border: none;
+            padding: 8px 16px; border-radius: 20px; cursor: pointer; transition: 0.2s;
+            font-weight: 500;
+        }
+
+        button:hover { opacity: 0.8; }
+        button.delete-btn { background-color: #ff3b30; margin-left: 10px; }
+
+        ul { list-style: none; padding: 0; margin: 0; }
+
+        .note-item {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            padding: 16px 0;
+            border-bottom: 0.5px solid var(--apple-border);
+        }
+
+        .checkbox-container { margin-bottom: 8px; }
+
+        input[type="checkbox"] {
+            width: 22px; height: 22px; accent-color: var(--apple-yellow);
+            cursor: pointer; margin: 0;
+        }
+
+        .note-text {
+            width: 100%; font-size: 15px; line-height: 1.5;
+            word-wrap: break-word; color: #333;
+            /* ↓ ここを修正：改行を有効にする設定 ↓ */
+            white-space: pre-wrap;
+        }
+
+        .trash-section { opacity: 0.7; border-top: 2px dashed var(--apple-border); }
+        h2 span { font-size: 0.6em; color: #86868b; margin-left: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="category-nav">
+        <div class="category-item" onclick="switchCategory('schedule', this)">📅 スケジュール</div>
+        <div class="category-item" onclick="switchCategory('shopping', this)">🛒 買物</div>
+        <div class="category-item" onclick="switchCategory('todo', this)">✅ ToDo</div>
+        <div class="category-item" onclick="switchCategory('diy', this)">📦 DIY</div>
+        <div class="category-item" onclick="switchCategory('mem', this)">📋 メモ</div>
+	<div class="category-item active" onclick="switchCategory('all', this)">📝 すべて</div>
+    </div>
+
+    <div class="glass-card">
+        <h2 id="editorTitle">📝 メモを作成 <span>(すべて)</span></h2>
+        <textarea id="noteInput" placeholder="クラウドに保存されます..."></textarea>
+        <div class="btn-row">
+            <button onclick="saveNote()">保存</button>
+        </div>
+    </div>
+
+    <div class="glass-card">
+        <h2>🗒 メモ一覧</h2>
+        <ul id="noteList"></ul>
+        <div class="btn-row">
+            <button class="delete-btn" onclick="updateStatus('trash')">選択したメモをゴミ箱へ</button>
+        </div>
+    </div>
+
+    <div class="glass-card trash-section">
+        <h2>🗑 ゴミ箱</h2>
+        <ul id="trashList"></ul>
+        <div class="btn-row">
+            <button class="delete-btn" onclick="permanentDelete()">完全に消去</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- Firebase設定 ---
+    const firebaseConfig = {
+      apiKey: "AIzaSyBT80sgCBfatK4LmultCa0v53afoiNik4c",
+      authDomain: "list0-cc1c2.firebaseapp.com",
+      projectId: "list0-cc1c2",
+      storageBucket: "list0-cc1c2.firebasestorage.app",
+      messagingSenderId: "955414582373",
+      appId: "1:955414582373:web:fd0cf771e45b64eeb3e28c",
+      measurementId: "G-EBQNF8T80Q"
+    };
+
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+
+    let currentCategory = 'all'; 
+    let unsubscribe = null;
+
+    function switchCategory(category, element) {
+        currentCategory = category;
+        document.querySelectorAll('.category-item').forEach(el => el.classList.remove('active'));
+        element.classList.add('active');
+        const categoryNames = {schedule: 'スケジュール',shopping: '買物',todo: 'ToDo',diy: 'DIY',mem: 'メモ',all: 'すべて'};
+        document.getElementById('editorTitle').innerHTML = `📝 メモを作成 <span>(${categoryNames[category]})</span>`;
+        loadNotes();
+    }
+
+    function loadNotes() {
+        if (unsubscribe) unsubscribe();
+        unsubscribe = db.collection("notes").orderBy("createdAt", "desc").onSnapshot((snapshot) => {
+            const noteList = document.getElementById('noteList');
+            const trashList = document.getElementById('trashList');
+            noteList.innerHTML = '';
+            trashList.innerHTML = '';
+
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                if (currentCategory !== 'all' && data.category !== currentCategory) return; 
+
+                const li = document.createElement('li');
+                li.className = 'note-item';
+                li.innerHTML = `
+                    <div class="checkbox-container">
+                        <input type="checkbox" data-id="${doc.id}">
+                    </div>
+                    <div class="note-text">${data.text}</div>
+                `;
+                
+                if (data.status === 'active') {
+                    noteList.appendChild(li);
+                } else {
+                    trashList.appendChild(li);
+                }
+            });
+        });
+    }
+
+    async function saveNote() {
+        const input = document.getElementById('noteInput');
+        if (!input.value.trim()) return;
+
+        try {
+            await db.collection("notes").add({
+                text: input.value,
+                status: 'active',
+                category: currentCategory, 
+                createdAt: firebase.firestore.FieldValue.serverTimestamp()
+            });
+            input.value = '';
+        } catch (e) {
+            console.error("Error saving note: ", e);
+        }
+    }
+
+    function updateStatus(newStatus) {
+        const containerId = newStatus === 'trash' ? '#noteList' : '#trashList';
+        const checkboxes = document.querySelectorAll(`${containerId} input:checked`);
+        if (checkboxes.length === 0) {
+            alert("メモを選択してください。");
+            return;
+        }
+        checkboxes.forEach(async (cb) => {
+            await db.collection("notes").doc(cb.dataset.id).update({ status: newStatus });
+        });
+    }
+
+    function permanentDelete() {
+        const checkboxes = document.querySelectorAll('#trashList input:checked');
+        if (checkboxes.length === 0) {
+            alert("消去するメモを選択してください。");
+            return;
+        }
+        if (!confirm("本当に完全に消去しますか？")) return;
+        checkboxes.forEach(async (cb) => {
+            await db.collection("notes").doc(cb.dataset.id).delete();
+        });
+    }
+
+    loadNotes();
+</script>
+
+</body>
+</html>
